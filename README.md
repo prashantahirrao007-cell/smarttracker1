@@ -1,23 +1,21 @@
-# Staff Tracker (Android APK)
+# Staff Tracker (Android APK + Web dashboard)
 
-Employee login + admin login. Check In -> live location on map. Check Out -> tracking stops.
-Admin sees all checked-in employees on a map (OpenStreetMap, free, no API key) with names, plus a report (CSV export).
+Shift 10:00 AM - 6:00 PM. Employee registers, signs in, location starts automatically (auto check-in on first sign-in inside shift hours), auto stops at 6 PM.
+Admin gets live map with names + trails, daily KM, dashboard counts, monthly report (CSV). Late = check-in after 10:15 AM.
 
-## Setup (one time)
-1. **Firebase (free Spark plan)**: https://console.firebase.google.com -> Add project.
-   - Add Android app, package name **com.stafftracker.app** -> download `google-services.json` -> put it in the `app/` folder.
-   - Build -> Authentication -> Get started -> enable **Email/Password**.
-   - Build -> Firestore Database -> Create database. Then Rules tab -> paste the contents of `firestore.rules` -> Publish.
-2. **GitHub**: create a **private** repository, upload this whole folder (including `app/google-services.json` and the hidden `.github` folder).
-3. Repo -> **Actions** tab -> "Build APK" runs automatically (or press Run workflow). When green, open the run -> **Artifacts** -> download `StaffTracker-apk`, unzip -> `app-debug.apk`.
-4. Install the APK on the phone (allow "install unknown apps").
+## Update steps
+1. GitHub: replace these 3 files in `app/src/main/java/com/stafftracker/app/` -> `MainActivity.kt`, `TrackService.kt`, and NEW `Duty.kt`. Commit -> Actions builds new APK.
+2. Firebase -> Firestore -> Rules -> paste new `firestore.rules` -> Publish (required, rules changed).
+3. Uninstall old app, install new APK. Register again OR keep old accounts (old accounts still work).
 
-## Make yourself admin
-1. Open the app, **Register** with your name/email/password (everyone registers as employee).
-2. Firebase console -> Firestore -> `users` -> your document -> change field `role` from `employee` to `admin`.
-3. Log out and log in again -> you now see the admin map and Report.
+## Web URL (free)
+1. Firebase console -> Project settings -> Your apps -> Add app -> Web (</>) -> copy the `firebaseConfig` values.
+2. Open `web/index.html`, replace every "PASTE_HERE" with those values.
+3. Create a NEW **public** GitHub repo (e.g. `stafftracker-web`), upload only `index.html`. (The config is not a secret; Firestore rules protect the data.)
+4. Repo -> Settings -> Pages -> Source: Deploy from branch -> main -> / (root) -> Save.
+5. URL: https://YOUR-USERNAME.github.io/stafftracker-web/
+6. Firebase -> Authentication -> Settings -> Authorized domains -> Add domain `YOUR-USERNAME.github.io`.
+7. Open URL, sign in with the admin account.
 
-## Notes
-- Allow location when asked. For best tracking set the app battery mode to **Unrestricted**.
-- Anyone with the APK can register as an employee. Keep the APK private; for tighter control, remove the Register button later and create users in Firebase console.
-- This is a debug APK, fine for testing and internal use.
+## Admin account
+Register in app -> Firestore -> users -> your document -> role = admin.

@@ -9,12 +9,12 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == u && request.resource.data.role == 'employee';
     }
     match /live/{u} {
-      allow read: if request.auth != null && isAdmin();
+      allow read: if request.auth != null && (request.auth.uid == u || isAdmin());
       allow write: if request.auth != null && request.auth.uid == u;
     }
     match /logs/{l} {
-      allow read: if request.auth != null && (isAdmin() || resource.data.uid == request.auth.uid);
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow read: if request.auth != null && (isAdmin() || l.matches(request.auth.uid + '_.*'));
+      allow create, update: if request.auth != null && l.matches(request.auth.uid + '_.*') && request.resource.data.uid == request.auth.uid;
     }
   }
 }
