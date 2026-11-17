@@ -97,9 +97,17 @@ class MainActivity : Activity() {
             setTextLabelFontSize(34); setTextIcon("📍 $n")
         })
     }
+    private fun dot(m: MapView, lat: Double, lng: Double) {
+        m.overlays.add(Marker(m).apply {
+            position = GeoPoint(lat, lng); setInfoWindow(null)
+            icon = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(RED); setSize(dp(10), dp(10)); setStroke(dp(1), Color.WHITE) }
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+        })
+    }
     private fun trail(m: MapView, d: DocumentSnapshot) {
         val pts = (d.get("path") as? List<*>)?.mapNotNull { (it as? String)?.split(",")?.let { s -> GeoPoint(s[0].toDouble(), s[1].toDouble()) } } ?: return
-        if (pts.size > 1) m.overlays.add(Polyline().apply { setPoints(pts); outlinePaint.color = PRI; outlinePaint.strokeWidth = 7f })
+        if (pts.size > 1) m.overlays.add(Polyline().apply { setPoints(pts); outlinePaint.color = RED; outlinePaint.strokeWidth = 4f })
+        pts.forEach { dot(m, it.latitude, it.longitude) }
     }
 
     // ---------- register / sign in ----------
@@ -165,7 +173,7 @@ class MainActivity : Activity() {
                 st.text = "● On duty"; st.setTextColor(PRI)
                 sub.text = "Since ${fmt(d.getLong("inAt"))}  •  ${"%.2f".format(d.getDouble("km") ?: 0.0)} km today" + (if (d.getBoolean("late") == true) "  •  Late" else "")
                 trail(m, d)
-                if (lat != null && lng != null) { pin(m, lat, lng, name); m.controller.setCenter(GeoPoint(lat, lng)) }
+                if (lat != null && lng != null) { pin(m, lat, lng, name + " • " + "%.2f".format(d.getDouble("km") ?: 0.0) + " km"); m.controller.setCenter(GeoPoint(lat, lng)) }
                 else sub.text = sub.text.toString() + "\nGetting GPS location…"
                 if (!started) { started = true; startSvc() }
             } else {
@@ -238,7 +246,7 @@ class MainActivity : Activity() {
                 val stale = now - (d.getLong("t") ?: 0L) > 180000
                 sb.append("● $n\n    In ${fmt(d.getLong("inAt"))} • ${"%.1f".format(k)} km • ${if (stale) "no signal" else "live"}${if (d.getBoolean("late") == true) " • late" else ""}\n")
                 trail(m, d)
-                if (lat != null && lng != null) { pin(m, lat, lng, n, stale); pts.add(GeoPoint(lat, lng)) }
+                if (lat != null && lng != null) { pin(m, lat, lng, n + " • " + "%.1f".format(k) + " km", stale); pts.add(GeoPoint(lat, lng)) }
             }
             for (d in done) {
                 ids.add(d.getString("uid") ?: d.id); val k = d.getDouble("km") ?: 0.0; km += k
@@ -252,7 +260,7 @@ class MainActivity : Activity() {
             }
             m.invalidate()
         }
-        regs.add(fs.collection("live").addSnapshotListener { s, _ -> if (s != null) { live = s.documents.filter { (it.getLong("inAt") ?: 0L) >= Duty.dayStart() }; render() } })
+        regs.add(fs.collection("live").addSnapshotListener { s, e -> if (e != null) toast("Admin data error: " + e.message); if (s != null) { live = s.documents.filter { (it.getLong("inAt") ?: 0L) >= Duty.dayStart() }; render() } })
         regs.add(fs.collection("logs").whereGreaterThanOrEqualTo("inAt", Duty.dayStart()).addSnapshotListener { s, _ -> if (s != null) { done = s.documents; render() } })
         fs.collection("users").get().addOnSuccessListener { s -> reg = s.documents.count { it.getString("role") != "admin" }; render() }
     }
