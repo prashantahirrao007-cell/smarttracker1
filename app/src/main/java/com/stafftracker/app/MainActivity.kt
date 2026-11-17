@@ -157,6 +157,7 @@ class MainActivity : Activity() {
         c.addView(b, lp(top = 12, bot = 0)); l.addView(c, lp())
         val m = newMap(17.0); l.addView(m, lp(0, 1f))
         regs.add(fs.collection("live").document(uid).addSnapshotListener { d, _ ->
+            if (d != null && d.exists() && (d.getLong("inAt") ?: 0L) < Duty.dayStart()) { Duty.finish(this); return@addSnapshotListener }
             onDuty = d != null && d.exists(); m.overlays.clear()
             b.text = if (onDuty) "Check Out" else "Check In"; b.background = shape(if (onDuty) RED else PRI, 12)
             if (d != null && d.exists()) {
@@ -251,7 +252,7 @@ class MainActivity : Activity() {
             }
             m.invalidate()
         }
-        regs.add(fs.collection("live").addSnapshotListener { s, _ -> if (s != null) { live = s.documents; render() } })
+        regs.add(fs.collection("live").addSnapshotListener { s, _ -> if (s != null) { live = s.documents.filter { (it.getLong("inAt") ?: 0L) >= Duty.dayStart() }; render() } })
         regs.add(fs.collection("logs").whereGreaterThanOrEqualTo("inAt", Duty.dayStart()).addSnapshotListener { s, _ -> if (s != null) { done = s.documents; render() } })
         fs.collection("users").get().addOnSuccessListener { s -> reg = s.documents.count { it.getString("role") != "admin" }; render() }
     }

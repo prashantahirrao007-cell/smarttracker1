@@ -14,17 +14,28 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import java.util.Locale
 
-/** Runs between Check In and Check Out (auto-stops at 6 PM). Sends position, distance and path to Firestore. */
+/** Runs between Check In and Check Out (auto-stops at 6 PM). Uses Google Fused Location (GPS + Wi-Fi + mobile network). */
 class TrackService : Service(), LocationListener {
     private var lm: LocationManager? = null
+    private var fused: FusedLocationProviderClient? = null
     private var first = true
     private var last: Location? = null
+    private var lastT = 0L
     private val h = Handler(Looper.getMainLooper())
+    private val cb = object : LocationCallback() {
+        override fun onLocationResult(r: LocationResult) { r.lastLocation?.let { handle(it) } }
+    }
 
     override fun onBind(i: Intent?): IBinder? = null
 
@@ -43,27 +54,46 @@ class TrackService : Service(), LocationListener {
         h.postDelayed({ Duty.finish(applicationContext); stopSelf() }, maxOf(Duty.at(Duty.END_H) - System.currentTimeMillis(), 1000L))
         lm = getSystemService(LocationManager::class.java)
         try {
-            for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER))
-                if (lm!!.isProviderEnabled(p)) lm!!.requestLocationUpdates(p, 30000L, 0f, this)
-        } catch (e: SecurityException) { stopSelf() }
-        Diag.msg = "Service running. GPS=" + lm!!.isProviderEnabled("gps") + ", Network=" + lm!!.isProviderEnabled("network") + ". Waiting for first fix..."
+            fused?.removeLocationUpdates(cb)
+            fused = LocationServices.getFusedLocationProviderClient(this)
+            val req = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 20000L)
+                .setMinUpdateIntervalMillis(10000L).setMinUpdateDistanceMeters(0f).build()
+            fused!!.requestLocationUpdates(req, cb, Looper.getMainLooper()).addOnFailureListener { startLm() }
+        } catch (e: Exception) { startLm() }
+        Diag.msg = "Service running (fused). Waiting for first fix..."
         return START_STICKY
     }
 
-    override fun onLocationChanged(l: Location) {
+    /** Fallback if Google Play services are not available on the phone. */
+    private fun startLm() {
+        try {
+            lm?.removeUpdates(this)
+            for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER))
+                if (lm!!.isProviderEnabled(p)) lm!!.requestLocationUpdates(p, 20000L, 0f, this)
+            Diag.msg = "Service running (basic GPS). Waiting for first fix..."
+        } catch (e: SecurityException) { stopSelf() }
+    }
+
+    override fun onLocationChanged(l: Location) = handle(l)
+
+    private fun handle(l: Location) {
         val u = FirebaseAuth.getInstance().currentUser ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastT < 5000) return
+        lastT = now
         Diag.fixes++
         Diag.msg = "Fix #" + Diag.fixes + " (" + l.provider + ") +-" + l.accuracy.toInt() + " m at " +
             java.text.SimpleDateFormat("hh:mm:ss a", Locale.US).format(java.util.Date())
-        val m = hashMapOf<String, Any>("lat" to l.latitude, "lng" to l.longitude, "acc" to l.accuracy, "t" to System.currentTimeMillis())
+        val m = hashMapOf<String, Any>("lat" to l.latitude, "lng" to l.longitude, "acc" to l.accuracy, "t" to now)
         fun pt() = String.format(Locale.US, "%.5f,%.5f", l.latitude, l.longitude)
         if (first) { m["inLat"] = l.latitude; m["inLng"] = l.longitude; first = false }
         val p = last
-        if (p == null) { last = l; m["path"] = FieldValue.arrayUnion(pt()) }
-        else if (l.accuracy < 60) {
+        if (p == null) {
+            if (l.accuracy < 50) { last = l; m["path"] = FieldValue.arrayUnion(pt()) }   // wait for a good fix before measuring distance
+        } else if (l.accuracy < 100) {
             val d = l.distanceTo(p)
-            if (d >= 15) {                       // ignore GPS jitter below 15 m
-                if (d < 1000) m["km"] = FieldValue.increment(d / 1000.0)
+            if (d >= maxOf(20f, l.accuracy)) {   // moved more than the GPS error radius = real movement
+                if (d < 2000) m["km"] = FieldValue.increment(d / 1000.0)
                 m["path"] = FieldValue.arrayUnion(pt()); last = l
             }
         }
@@ -76,5 +106,7 @@ class TrackService : Service(), LocationListener {
     override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
     override fun onProviderEnabled(p: String) {}
     override fun onProviderDisabled(p: String) {}
-    override fun onDestroy() { h.removeCallbacksAndMessages(null); lm?.removeUpdates(this); super.onDestroy() }
+    override fun onDestroy() {
+        h.removeCallbacksAndMessages(null); fused?.removeLocationUpdates(cb); lm?.removeUpdates(this); super.onDestroy()
+    }
 }

@@ -29,12 +29,13 @@ object Duty {
         live.get().addOnSuccessListener { d ->
             if (!d.exists()) { done(); return@addOnSuccessListener }
             val inAt = d.getLong("inAt") ?: System.currentTimeMillis()
+            val out = if (inAt < dayStart()) minOf(d.getLong("t") ?: inAt, at(END_H, inAt)) else System.currentTimeMillis()
             val ref = fs.collection("logs").document(u.uid + "_" + key(inAt))
             ref.get().addOnSuccessListener { old ->
                 ref.set(hashMapOf<String, Any?>(
                     "uid" to u.uid, "name" to d.getString("name"),
                     "inAt" to minOf(inAt, old.getLong("inAt") ?: Long.MAX_VALUE),
-                    "outAt" to System.currentTimeMillis(),
+                    "outAt" to out,
                     "km" to (d.getDouble("km") ?: 0.0) + (old.getDouble("km") ?: 0.0),
                     "late" to (old.getBoolean("late") ?: d.getBoolean("late") ?: false),
                     "inLat" to (old.get("inLat") ?: d.get("inLat")), "inLng" to (old.get("inLng") ?: d.get("inLng")),
