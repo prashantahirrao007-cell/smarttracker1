@@ -46,11 +46,15 @@ class TrackService : Service(), LocationListener {
             for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER))
                 if (lm!!.isProviderEnabled(p)) lm!!.requestLocationUpdates(p, 30000L, 0f, this)
         } catch (e: SecurityException) { stopSelf() }
+        Diag.msg = "Service running. GPS=" + lm!!.isProviderEnabled("gps") + ", Network=" + lm!!.isProviderEnabled("network") + ". Waiting for first fix..."
         return START_STICKY
     }
 
     override fun onLocationChanged(l: Location) {
         val u = FirebaseAuth.getInstance().currentUser ?: return
+        Diag.fixes++
+        Diag.msg = "Fix #" + Diag.fixes + " (" + l.provider + ") +-" + l.accuracy.toInt() + " m at " +
+            java.text.SimpleDateFormat("hh:mm:ss a", Locale.US).format(java.util.Date())
         val m = hashMapOf<String, Any>("lat" to l.latitude, "lng" to l.longitude, "acc" to l.accuracy, "t" to System.currentTimeMillis())
         fun pt() = String.format(Locale.US, "%.5f,%.5f", l.latitude, l.longitude)
         if (first) { m["inLat"] = l.latitude; m["inLng"] = l.longitude; first = false }
@@ -65,6 +69,8 @@ class TrackService : Service(), LocationListener {
         }
         // update() fails if the live doc is gone (after check-out), so tracking never resurrects
         FirebaseFirestore.getInstance().collection("live").document(u.uid).update(m)
+            .addOnSuccessListener { Diag.up = "Upload OK" }
+            .addOnFailureListener { Diag.up = "Upload FAILED: " + it.message }
     }
 
     override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}

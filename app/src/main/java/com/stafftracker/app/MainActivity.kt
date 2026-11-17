@@ -149,6 +149,10 @@ class MainActivity : Activity() {
         header(l, "Hello, $name", "Duty time 10:00 AM – 6:00 PM", "Logout") { logout() }
         val c = card(); val st = tv("", 18f, true); val sub = tv("", 13f, false, MUT)
         c.addView(st); c.addView(sub)
+        val dg = tv("", 11f, false, MUT); c.addView(dg)
+        dg.post(object : Runnable { override fun run() {
+            if (screen == "emp") { dg.text = "Location permission: " + (if (hasLoc()) "OK" else "MISSING") + "\n" + Diag.text(); dg.postDelayed(this, 2000) }
+        } })
         val b = btn("Check In") { if (onDuty) Duty.finish(this) else checkIn(uid) }
         c.addView(b, lp(top = 12, bot = 0)); l.addView(c, lp())
         val m = newMap(17.0); l.addView(m, lp(0, 1f))

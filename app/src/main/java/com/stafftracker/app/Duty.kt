@@ -44,3 +44,11 @@ object Duty {
         }
     }
 }
+
+/** Simple on-screen diagnostics shared between the tracking service and the employee screen. */
+object Diag {
+    @Volatile var msg = "Tracking not started yet"
+    @Volatile var up = "No upload yet"
+    @Volatile var fixes = 0
+    fun text() = msg + "\n" + up
+}
